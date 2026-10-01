@@ -1,0 +1,11 @@
+# Dev build for frontend with Vite dev server and hot-reload
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci --no-cache
+
+EXPOSE 5173
+
+CMD ["npx", "vite", "--host", "0.0.0.0"]

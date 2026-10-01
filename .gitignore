@@ -172,6 +172,16 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# Migrations metadata (but not the migrations themselves)
+alembic/versions/*.pyc
+
+# Build outputs
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.idea/
+
 # Pyre type checker
 .pyre/
 
