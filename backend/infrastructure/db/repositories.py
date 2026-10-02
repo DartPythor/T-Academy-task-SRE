@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.application.ports.repositories import (
     CompanyRepository,
@@ -133,15 +134,25 @@ class SQLVacancyRepository(VacancyRepository):
         self._session = session
 
     async def get(self, vacancy_id: UUID) -> Optional[Vacancy]:
-        orm = await self._session.get(VacancyORM, vacancy_id)
+        stmt = (
+            select(VacancyORM)
+            .options(selectinload(VacancyORM.metric))
+            .where(VacancyORM.id == vacancy_id)
+        )
+        result = await self._session.execute(stmt)
+        orm = result.scalar_one_or_none()
         return vacancy_to_domain(orm) if orm else None
 
     async def get_by_external_id(
         self, source_id: UUID, external_id: str
     ) -> Optional[Vacancy]:
-        stmt = select(VacancyORM).where(
-            VacancyORM.source_id == source_id,
-            VacancyORM.external_id == external_id,
+        stmt = (
+            select(VacancyORM)
+            .options(selectinload(VacancyORM.metric))
+            .where(
+                VacancyORM.source_id == source_id,
+                VacancyORM.external_id == external_id,
+            )
         )
         result = await self._session.execute(stmt)
         orm = result.scalar_one_or_none()
@@ -154,7 +165,9 @@ class SQLVacancyRepository(VacancyRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> list[Vacancy]:
-        stmt = select(VacancyORM).order_by(VacancyORM.created_at.desc())
+        stmt = select(VacancyORM).options(
+            selectinload(VacancyORM.metric),
+        ).order_by(VacancyORM.created_at.desc())
         if status is not None:
             stmt = stmt.where(VacancyORM.status == status)
         stmt = stmt.offset(offset).limit(limit)
