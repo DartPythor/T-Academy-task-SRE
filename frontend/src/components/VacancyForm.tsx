@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { VacancyCreateRequest, SalaryRange, Money } from '../types'
 import { EMPLOYMENT_TYPES, WORK_MODES, CURRENCIES, generateId } from '../types'
 import type { VacancyResponse } from '../types'
@@ -29,17 +29,6 @@ const emptyForm: FormState = {
   employment_type: '', work_mode: '',
   salary_min: '', salary_max: '', salary_currency: 'RUB',
   salary_gross: false, skill_names: '',
-}
-
-function SectionHeader({ icon }: { icon: React.ReactNode }) {
-  return (
-    <div className="form-section-header">
-      <svg width={16} height={16} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        {icon}
-      </svg>
-      {null}
-    </div>
-  )
 }
 
 export function VacancyForm({ onResult, onLoading }: VacancyFormProps) {
@@ -89,7 +78,7 @@ export function VacancyForm({ onResult, onLoading }: VacancyFormProps) {
       const result = await createVacancy(payload)
       onResult(result)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка при создании вакансии')
+      setError((err as { message?: string })?.message || 'Ошибка при создании вакансии')
     } finally {
       setSubmitting(false)
       onLoading(false)
