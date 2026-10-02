@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
 
 from backend.config import settings
 from backend.infrastructure.db.session import engine
@@ -15,11 +19,19 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Жизненный цикл приложения (12 Factor: Disposability).
-
-    Таблицы БД создаются через Alembic миграции, не на старте.
-    """
+    """Жизненный цикл приложения."""
     logger.info("Application starting", extra={"version": settings.app_version})
+
+    # Автоматическое применение миграций Alembic
+    try:
+        import asyncio
+        cfg = AlembicConfig(Path(__file__).resolve().parent.parent / "alembic.ini")
+        await asyncio.to_thread(alembic_command.upgrade, cfg, "head")
+        logger.info("Database migrations applied successfully")
+    except Exception as e:
+        logger.error("Failed to apply database migrations", extra={"error": str(e)})
+        raise
+
     yield
     logger.info("Application shutting down")
     await engine.dispose()
