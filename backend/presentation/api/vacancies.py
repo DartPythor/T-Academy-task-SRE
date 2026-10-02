@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 from backend.application.dto.vacancy_dto import CreateVacancyDTO, UpdateVacancyDTO
 from backend.domain.entities import Vacancy
 from backend.domain.values import Money, SalaryRange
-from backend.presentation.dependencies import MetricUseCasesDep, VacancyUseCasesDep
+from backend.infrastructure.db.repositories import SQLCompanyRepository
+from backend.presentation.dependencies import MetricUseCasesDep, SessionDep, VacancyUseCasesDep
 from backend.presentation.schemas.common import PaginatedResponse
 from backend.presentation.schemas.vacancy import (
     MetricResponse,
@@ -22,12 +23,14 @@ router = APIRouter(prefix="/vacancies", tags=["vacancies"])
 @router.get("", response_model=PaginatedResponse[VacancyResponse])
 async def list_vacancies(
     use_cases: VacancyUseCasesDep,
+    session: SessionDep,
     status_filter: str | None = Query(None, alias="status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> PaginatedResponse[VacancyResponse]:
     vacancies = await use_cases.list(status=status_filter, limit=limit, offset=offset)
-    items = [_vacancy_to_response(v) for v in vacancies]
+    company_repo = SQLCompanyRepository(session)
+    items = [_vacancy_to_response(v, await _load_company_name(v, company_repo)) for v in vacancies]
     return PaginatedResponse(
         items=items,
         total=len(items),
@@ -39,6 +42,7 @@ async def list_vacancies(
 async def create_vacancy(
     body: VacancyCreateRequest,
     use_cases: VacancyUseCasesDep,
+    session: SessionDep,
 ) -> VacancyResponse:
     dto = CreateVacancyDTO(
         source_id=body.source_id,
@@ -57,23 +61,29 @@ async def create_vacancy(
         skill_names=body.skill_names,
     )
     vacancy = await use_cases.create(dto)
-    return _vacancy_to_response(vacancy)
+    company_repo = SQLCompanyRepository(session)
+    company_name = await _load_company_name(vacancy, company_repo)
+    return _vacancy_to_response(vacancy, company_name)
 
 @router.get("/{vacancy_id}", response_model=VacancyResponse)
 async def get_vacancy(
     vacancy_id: UUID,
     use_cases: VacancyUseCasesDep,
+    session: SessionDep,
 ) -> VacancyResponse:
     vacancy = await use_cases.get(vacancy_id)
     if vacancy is None:
         raise HTTPException(status_code=404, detail="vacancy not found")
-    return _vacancy_to_response(vacancy)
+    company_repo = SQLCompanyRepository(session)
+    company_name = await _load_company_name(vacancy, company_repo)
+    return _vacancy_to_response(vacancy, company_name)
 
 @router.put("/{vacancy_id}", response_model=VacancyResponse)
 async def update_vacancy(
     vacancy_id: UUID,
     body: VacancyUpdateRequest,
     use_cases: VacancyUseCasesDep,
+    session: SessionDep,
 ) -> VacancyResponse:
     dto = UpdateVacancyDTO(
         title=body.title,
@@ -92,7 +102,9 @@ async def update_vacancy(
         vacancy = await use_cases.update(vacancy_id, dto)
     except ValueError:
         raise HTTPException(status_code=404, detail="vacancy not found")
-    return _vacancy_to_response(vacancy)
+    company_repo = SQLCompanyRepository(session)
+    company_name = await _load_company_name(vacancy, company_repo)
+    return _vacancy_to_response(vacancy, company_name)
 
 @router.delete("/{vacancy_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_vacancy(
@@ -116,13 +128,16 @@ async def recalculate_metrics(
     vacancy_id: UUID,
     body: RecalculateRequest,
     use_cases: MetricUseCasesDep,
+    session: SessionDep,
 ) -> VacancyResponse:
     salary = _salary_to_domain(body.salary)
     try:
         vacancy = await use_cases.recalculate(vacancy_id, salary)
     except ValueError:
         raise HTTPException(status_code=404, detail="vacancy not found")
-    return _vacancy_to_response(vacancy)
+    company_repo = SQLCompanyRepository(session)
+    company_name = await _load_company_name(vacancy, company_repo)
+    return _vacancy_to_response(vacancy, company_name)
 
 @router.delete("/{vacancy_id}/metrics", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_vacancy_metrics(
@@ -131,7 +146,13 @@ async def delete_vacancy_metrics(
 ) -> None:
     await use_cases.delete_metric(vacancy_id)
 
-def _vacancy_to_response(v: Vacancy) -> VacancyResponse:
+async def _load_company_name(v: Vacancy, repo: SQLCompanyRepository) -> str | None:
+    if v.company_id is None:
+        return None
+    company = await repo.get(v.company_id)
+    return company.name if company else None
+
+def _vacancy_to_response(v: Vacancy, company_name: str | None = None) -> VacancyResponse:
     metric: MetricResponse | None = None
     if v.metric is not None:
         metric = _metric_to_response(v.metric)
@@ -144,6 +165,7 @@ def _vacancy_to_response(v: Vacancy) -> VacancyResponse:
         url=v.url,
         description=v.description,
         company_id=v.company_id,
+        company_name=company_name,
         location=v.location,
         employment_type=v.employment_type.value if v.employment_type else None,
         work_mode=v.work_mode.value if v.work_mode else None,

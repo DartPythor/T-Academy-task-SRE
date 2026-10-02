@@ -77,6 +77,7 @@ class VacancyResponse(BaseModel):
     url: str
     description: str
     company_id: UUID | None = None
+    company_name: str | None = None
     location: str | None = None
     employment_type: str | None = None
     work_mode: str | None = None
