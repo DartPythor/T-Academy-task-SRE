@@ -1,58 +1,75 @@
 from __future__ import annotations
 
 import logging
-import sys
 
-def configure_logging(level: str = "INFO") -> None:
-    """Настройка структурированного JSON-логирования.
+import structlog
+from structlog.typing import EventDict, Processor
 
-    Все логи пишутся в stdout как JSON-строки для корректной обработки
-    системами сбора логов (Loki, Datadog, ELK и т.д.).
+# Стабильное логическое имя сервиса (semantic convention `service.name`).
+# Используется в Victoria Logs для фильтрации и группировки.
+SERVICE_NAME = "backend"
 
-    В debug-режиме использует человекочитаемый формат для локальной разработки.
+# Рендер финальной строки в зависимости от выбранного формата.
+LOGGER_PARSER: dict[str, Processor] = {
+    "console": structlog.dev.ConsoleRenderer(),
+    "json": structlog.processors.JSONRenderer(ensure_ascii=False, default=str),
+}
+
+# Сопоставление текстового уровня (из конфигурации) с числовым уровнем stdlib.
+_LEVELS: dict[str, int] = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+
+def _add_service_name(
+    _logger: logging.Logger,
+    _method_name: str,
+    event_dict: EventDict,
+) -> EventDict:
+    """Добавляет обязательное поле `service.name` в каждую запись."""
+    event_dict.setdefault("service.name", SERVICE_NAME)
+    return event_dict
+
+
+def configure_logging(level: str = "INFO", log_format: str = "json") -> None:
+    """Настраивает structlog в зависимости от формата и уровня логирования.
+
+    Каждая запись проходит по цепочке процессоров и выводится в stdout:
+    ``add_log_level`` → ``TimeStamper`` → ``service.name`` → ``format_exc_info``
+    → ``EventRenamer`` (``event`` → ``message``) → рендер (json/console).
 
     Factor 11: Treat logs as event streams.
     """
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level.upper())
+    processors: list[Processor] = [
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        _add_service_name,
+        structlog.processors.format_exc_info,
+        structlog.processors.EventRenamer("message"),
+        LOGGER_PARSER[log_format],
+    ]
 
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(level.upper())
-
-    class SimpleJSONFormatter(logging.Formatter):
-        """Форматтер, выводящий логи как JSON-строки."""
-
-        def format(self, record: logging.LogRecord) -> str:
-            import json
-            from datetime import datetime, timezone
-
-            log_entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "level": record.levelname,
-                "logger": record.name,
-                "message": record.getMessage(),
-            }
-
-            corr_id = getattr(record, "correlation_id", None)
-            if corr_id:
-                log_entry["correlation_id"] = corr_id
-
-            if record.exc_info and record.exc_info[0]:
-                log_entry["exception"] = self.formatException(record.exc_info)
-
-            return json.dumps(log_entry, default=str)
-
-    handler.setFormatter(SimpleJSONFormatter())
-    root_logger.addHandler(handler)
-
-    logging.getLogger("sqlalchemy.engine").setLevel(
-        logging.WARNING if level.upper() == "INFO" else level.upper()
+    structlog.configure(
+        processors=processors,
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        wrapper_class=structlog.make_filtering_bound_logger(
+            _LEVELS.get(level.upper(), logging.INFO)
+        ),
+        cache_logger_on_first_use=True,
     )
+
+    # Сторонние библиотеки (sqlalchemy, httpx) пишут через stdlib logging —
+    # приглушаем их, чтобы они не шумели рядом со структурированными логами.
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-def get_logger(name: str) -> logging.Logger:
-    """Получить логгер с именем модуля."""
-    return logging.getLogger(name)
+
+def get_logger(name: str) -> structlog.BoundLogger:
+    """Получить structlog-логгер с привязанным именем модуля."""
+    return structlog.get_logger().bind(logger=name)

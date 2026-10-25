@@ -10,6 +10,8 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 os.environ["VA_DB_DSN"] = "postgresql+asyncpg://test:test@localhost:5432/test_db"
+# Юнит-тесты не поднимают БД: миграции при старте приложения не нужны.
+os.environ["VA_RUN_MIGRATIONS"] = "false"
 
 @pytest.fixture(scope="session")
 def anyio_backend():

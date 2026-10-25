@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import logging
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.config import settings
+from backend.infrastructure.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 engine = create_async_engine(
     settings.db_dsn,
@@ -44,5 +44,5 @@ async def check_db_connection() -> bool:
             await conn.execute(text("SELECT 1"))
         return True
     except Exception as exc:
-        logger.warning("Database health check failed: %s", exc)
+        logger.warning("Database health check failed", error=str(exc))
         return False

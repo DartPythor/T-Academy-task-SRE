@@ -6,6 +6,8 @@ import os
 import pytest
 
 os.environ["VA_DB_DSN"] = "postgresql+asyncpg://test:test@localhost:5432/test_db"
+# Тесты не требуют живой БД — миграции при старте приложения отключены.
+os.environ["VA_RUN_MIGRATIONS"] = "false"
 
 from backend.main import create_app
 from backend.presentation.schemas.common import HealthResponse

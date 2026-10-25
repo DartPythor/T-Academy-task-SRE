@@ -1,13 +1,20 @@
+# Переопределения для локальной разработки (docker compose подхватывает этот
+# файл автоматически). Для «боевого» запуска: docker compose -f docker-compose.yml up
 
 services:
   backend:
     environment:
       VA_DEBUG: "true"
       VA_LOG_LEVEL: "DEBUG"
+      VA_DB_DSN: postgresql+asyncpg://${POSTGRES_USER:-vacancy_user}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB:-vacancies}
+      VA_RUN_MIGRATIONS: "false"
+      VA_ALEMBIC_CONFIG: /app/alembic.ini
     volumes:
+      # Код и миграции монтируются из репозитория: правки видны без пересборки.
+      # alembic.ini и alembic/ обязательно нужны — их читает entrypoint.
       - ./backend:/app/backend
-      - ./alembic.ini:/app/alembic.ini
-      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./alembic:/app/alembic:ro
     command: uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
 
   frontend:

@@ -4,18 +4,19 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: vacancies
-      POSTGRES_USER: vacancy_user
+      POSTGRES_DB: ${POSTGRES_DB:-vacancies}
+      POSTGRES_USER: ${POSTGRES_USER:-vacancy_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?error}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vacancy_user -d vacancies"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vacancy_user} -d ${POSTGRES_DB:-vacancies}"]
       interval: 5s
       retries: 10
       timeout: 3s
+      start_period: 10s
 
   backend:
     build:
@@ -23,17 +24,32 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Явный DSN: имя сервиса БД в compose-сети — `db`.
+      VA_DB_DSN: postgresql+asyncpg://${POSTGRES_USER:-vacancy_user}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB:-vacancies}
+      # Миграции применяет docker/entrypoint.sh до старта uvicorn
+      VA_RUN_MIGRATIONS: "false"
+      VA_ALEMBIC_CONFIG: /app/alembic.ini
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # Upstream для /api/ в nginx.conf (имя сервиса compose)
+      BACKEND_HOST: backend:8000
     depends_on:
       - backend
     ports:

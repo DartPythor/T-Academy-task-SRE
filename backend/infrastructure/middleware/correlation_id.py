@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import uuid
-import logging
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
-
-logger = logging.getLogger(__name__)
 
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """Middleware для добавления correlation_id к каждому запросу.

@@ -1,4 +1,5 @@
-.PHONY: install install-dev lint test run-dev run build build-prod clean
+.PHONY: install install-dev lint test run-dev run build build-prod clean \
+        migrate migrate-down migrate-current migrate-history makemigration
 
 VERSION ?= 0.1.0
 
@@ -18,6 +19,27 @@ format:
 
 test:
 	pytest -v --cov=backend --cov-report=term-missing
+
+# ── Миграции (Alembic) ────────────────────────────────────────────
+# Применить все миграции (схема БД -> актуальная)
+migrate:
+	poetry run alembic upgrade head
+
+# Откатить последнюю миграцию
+migrate-down:
+	poetry run alembic downgrade -1
+
+# Текущая применённая ревизия
+migrate-current:
+	poetry run alembic current
+
+# История миграций
+migrate-history:
+	poetry run alembic history --verbose
+
+# Создать новую миграцию: make makemigration M="add index"
+makemigration:
+	poetry run alembic revision --autogenerate -m "$(M)"
 
 run-dev:
 	poetry run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug

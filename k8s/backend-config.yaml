@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  VA_DEBUG: "false"
+  VA_LOG_LEVEL: "INFO"
+  VA_APP_TITLE: "Vacancy Analyzer API"
+  VA_APP_VERSION: "0.1.0"
+  VA_RUN_MIGRATIONS: "false"
+  VA_ALEMBIC_CONFIG: "/app/alembic.ini"
+  VA_DB_POOL_SIZE: "10"
+  VA_DB_MAX_OVERFLOW: "20"
+  VA_DB_POOL_TIMEOUT: "30"
